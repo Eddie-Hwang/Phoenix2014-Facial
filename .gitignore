@@ -1,0 +1,6 @@
+data/
+test/
+sign_model/
+*.ipynb
+__pycache__/
+.vscode
