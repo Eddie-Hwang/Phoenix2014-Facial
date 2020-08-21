@@ -47,6 +47,7 @@ class TrainManager:
             model_dir=train_config['model_dir'],
         )
         self.logging_freq = train_config.get('logging_freq', 100)
+        self.logging_display = train_config.get('logging_display', False)
         self.tb_writer = SummaryWriter(log_dir=train_config['model_dir'] + "/tensorboard/")
 
         self.epochs = train_config['epochs']
@@ -158,6 +159,7 @@ class TrainManager:
         return translation_loss, generation_loss
     
     def train_and_validation(self, train_data, valid_data):
+        # Train dataset
         train_iter = make_data_iter(
             dataset=train_data,
             batch_size=self.batch_size,
@@ -165,6 +167,14 @@ class TrainManager:
             train=True,
             shuffle=self.shuffle,
         )
+        # Valid dataset
+        val_iter = make_data_iter(
+            dataset=valid_data,
+            batch_size=self.batch_size,
+            batch_type=self.batch_type,
+            train=False,
+        )
+
         for epoch in range(self.epochs):
             self.logger.info('EPOCH {}'.format(epoch + 1))
 
@@ -179,28 +189,30 @@ class TrainManager:
             # Set count
             count = self.batch_multiplier - 1
             
-            epoch_translation_loss = 0
-            epoch_generation_loss = 0
-            for batch in iter(train_iter):
+            for batch in tqdm(iter(train_iter), desc='- (Training)', leave=False):
                 batch = Batch(
                     torch_batch=batch,
                     txt_pad_index=self.model.txt_pad_token,
                     trg_pad_token=self.model.trg_pad_token,
                     use_cuda=self.use_cuda,
                 )
+
                 update = (count == 0)
-                translation_loss, generation_loss = self._train_batch(batch, update)
+                tr_translation_loss, tr_generation_loss = self._train_batch(batch, update)
 
                 # Write loss on tensorboard
                 if self.do_translation:
                     self.tb_writer.add_scalar(
-                        'translation_loss', translation_loss, self.steps
+                        'Translation_loss(Train)', 
+                        tr_translation_loss, 
+                        self.steps
                     )
-                    epoch_translation_loss += translation_loss.detach().cpu().numpy()
                 if self.do_generation:
                     self.tb_writer.add_scalar(
-                        'generation_loss', generation_loss, self.steps)
-                    epoch_generation_loss += generation_loss.detach().cpu().numpy()
+                        'generation_loss(Train)', 
+                        tr_generation_loss, 
+                        self.steps
+                    )
 
                 count = self.batch_multiplier if update else count
                 count -= 1
@@ -214,20 +226,69 @@ class TrainManager:
 
                 # Log learning process
                 if self.steps % self.logging_freq == 0 and update:
-                    elapsed = time.time() - start 
-
                     log_out = "[Epoch: {:03d} Step: {:08d}] ".format(
                         epoch + 1, self.steps,
                     )
-
                     if self.do_translation:
                         log_out += 'Batch Translation Loss: {:10.6f} => '.format(
-                            translation_loss
+                            tr_translation_loss
                         )
                     if self.do_translation:
                         log_out += "Batch Generation Loss: {:10.6f} => ".format(
-                            generation_loss
+                            tr_generation_loss
                         )
                     log_out += "Lr: {:.6f}".format(self.optimizer.param_groups[0]["lr"])
                     self.logger.info(log_out)
-                    start = time.time()
+
+            if self.steps % self.validation_freq == 0 and update:
+                # Set model on evaluation mode
+                self.model.eval()
+                
+                # Don't track gradients during validation
+                with torch.no_grad():
+                    batch_translation_loss = 0
+                    batch_generation_loss = 0
+                    for batch in tqdm(iter(val_iter), desc='- (Validation)', leave=False):
+                        batch = Batch(
+                            torch_batch=batch,
+                            txt_pad_index=self.model.txt_pad_token,
+                            trg_pad_token=self.model.trg_pad_token,
+                            use_cuda=self.use_cuda,
+                        )
+
+                        # Foward
+                        val_translation_loss, val_generation_loss = self.model.train_batch(
+                                                                        batch=batch,
+                                                                        translation_loss_function=self.translation_loss_function,
+                                                                        translation_loss_weight=self.translation_loss_weight,
+                                                                        generation_loss_function=self.generation_loss_function,
+                                                                        generation_loss_weight=self.generation_loss_weight,
+                        )
+
+                        batch_translation_loss += val_translation_loss
+                        batch_generation_loss += val_generation_loss
+
+                        # Write loss on tensorboard
+                        if self.do_translation:
+                            self.tb_writer.add_scalar(
+                                'Translation_loss(Valid)', 
+                                val_translation_loss, 
+                                self.steps
+                            )
+                        if self.do_generation:
+                            self.tb_writer.add_scalar(
+                                'generation_loss(Valid)', 
+                                val_generation_loss, 
+                                self.steps
+                            )
+                    # Logging
+                    log_out = '[Validation] '
+                    if self.do_translation:
+                        log_out += 'Valid Translation Loss: {:10.6f} => '.format(
+                            batch_translation_loss/len(val_iter)
+                        )
+                    if self.do_translation:
+                        log_out += "Valid Generation Loss: {:10.6f} => ".format(
+                            batch_generation_loss/len(val_iter)
+                        )
+                    self.logger.info(log_out)
