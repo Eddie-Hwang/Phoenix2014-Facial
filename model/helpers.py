@@ -10,16 +10,18 @@ import errno
 import shutil
 import random
 import logging
+import numpy as np
+import torch
+import yaml
+
 from sys import platform
 from logging import Logger
 from typing import Callable, Optional
-import numpy as np
-
-import torch
+from model.vocab import GlossVocabulary, TextVocabulary
 from torch import nn, Tensor
 from torchtext.data import Dataset
-import yaml
-from dataset.vocab import GlossVocabulary, TextVocabulary
+
+
 
 
 def make_model_dir(model_dir: str, overwrite: bool = False) -> str:
@@ -58,7 +60,7 @@ def make_logger(model_dir: str, log_file: str = "train.log") -> Logger:
             sh.setLevel(logging.INFO)
             sh.setFormatter(formatter)
             logging.getLogger("").addHandler(sh)
-        logger.info("Hello! This is Joey-NMT.")
+        # logger.info("Hello! This is Joey-NMT.")
         return logger
 
 

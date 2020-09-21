@@ -3,16 +3,40 @@ import torch.nn as nn
 
 class MSELoss(nn.Module):
 
-    def __init__(self):
+    def __init__(self, use_custom_loss=True):
         super(MSELoss, self).__init__()
         self.criterion = nn.MSELoss()
+        self.use_custom_loss = use_custom_loss
 
     def forward(self, pred, target):
         '''
-        Compute mean squared error between predicted output and targets.
+        Compute custom mean squared error between predicted output and targets.
         '''
+        n_element = pred.numel()
+        
+        # Mean squared error
         mse_loss = self.criterion(pred, target)
-        loss = mse_loss
+
+        if self.use_custom_loss:
+            # Continuous motion
+            diff = [abs(pred[:, n, :] - pred[:, n-1, :]) for n in range(1, pred.shape[1])]
+            cont_loss = torch.sum(torch.stack(diff)) / n_element
+            cont_loss /= 100 # ~0.1 -> 0.001
+
+            # Motion variance
+            norm = torch.norm(pred, 2, 1) # B x S x dim
+            var_loss = -torch.sum(norm) / n_element
+            var_loss /= 1 # ~0.1 -> 0.1
+
+            # Rotation loss
+            rotation_diff = abs(pred[:, :, 0] - 0)
+            rotation_loss = torch.sum(rotation_diff) / n_element
+            rotation_loss /= 1
+            
+            loss = mse_loss + cont_loss + var_loss + rotation_loss
+        
+        else:
+            loss = mse_loss
         
         return loss
 

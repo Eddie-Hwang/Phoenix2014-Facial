@@ -10,25 +10,14 @@ def render_opts(parser):
 def process_opts(parser):
     ''' Set arguments of process.py '''
     parser.add_argument('-keypts', default='./data/keypts')
-    parser.add_argument('-annotation', default='./data/manual')
+    parser.add_argument('-annotation', default='./data/annotation')
     parser.add_argument('-processed', default='./data')
     parser.add_argument('-save_pickle', type=bool, default=True)
-    parser.add_argument('-save_json', type=bool, default=False)
+    parser.add_argument('-save_json', type=bool, default=True)
 
 def dataset_opts(parser):
-    ''' Set vocab arguments '''
     parser.add_argument('-data', default='./data')
-
-'''
-Token to be used
-'''
-SIL_TOKEN = "<si>"
-UNK_TOKEN = "<unk>"
-PAD_TOKEN = "<pad>"
-BOS_TOKEN = "<s>"
-EOS_TOKEN = "</s>"
-
-PAD_FEATURE_SIZE = 210
+    parser.add_argument('-level', default='text')
 
 
 ''' 
@@ -51,3 +40,5 @@ PULPIL = [68, 69]
 
 NECK = [0, 1]
 HEAD = [17, 15, 0, 16, 18]
+LEFT_ARM = [4, 3, 2, 1]
+RIGHT_ARM = [1, 5, 6, 7]

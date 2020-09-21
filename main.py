@@ -3,13 +3,17 @@ from model.model import build_model
 from train_manager import TrainManager
 from utils import *
 from opts import *
+from model.prediction import test_on_data
+from render import render_face, get_blank_img
+from tqdm import tqdm
+from PIL import Image, ImageDraw, ImageFont
 
 import argparse
-import os
+import os, sys
+import numpy as np
 
 def _get_parser():
     parser = argparse.ArgumentParser()
-    dataset_opts(parser)
     parser.add_argument(
         '-config',
         default='./model_configs/default.yaml',
@@ -17,43 +21,111 @@ def _get_parser():
         help='Traning configuration file (yaml).'
     )
     parser.add_argument('--gpu_id', type=str, default='0')
+    parser.add_argument('--ckpt_path', type=str, default='./sign_model/best.ckpt')
+    parser.add_argument('--output', type=str, default='./output')
+    parser.add_argument('--img_size', type=int, default=64)
+    parser.add_argument('--learned_pca', default='./pca_result/learned_pca.pickle')
+    
     args = parser.parse_args()
 
     return args
 
-def train(args):
+def draw_landmark(args, x_cor, y_cor):
+    image, draw = get_blank_img(
+        clr='L', 
+        width=args.img_size, 
+        height=args.img_size
+    )
+    # Render facial expression
+    render_face(x_cor, y_cor, draw, width=1)
+
+    return image
+
+def test(args):
     configs = load_config(args.config)
-
+    ckpt_path = args.ckpt_path
     # Load data and vocabulary
-    tr_data, dev_data, tst_data, _txt_vocab, _gls_vocab = load_data(args)
+    tr_data, dev_data, tst_data, txt_vocab, gls_vocab = load_data(configs['data'])
     
-    # Build model
-    do_translation = configs['training'].get('translation_loss_weight', 1.0) > 0.0
-    do_generation = configs['training'].get('generation_loss_weight', 1.0) > 0.0
-    model = build_model(
-        config=configs['model'],
-        txt_vocab=_txt_vocab,
-        gls_vocab=_gls_vocab,
-        do_translation=do_translation,
-        do_generation=do_generation,
-    )
+    if not(os.path.exists('./sign_model/test_result.pickle')):
+        # Test
+        result = test_on_data(
+            config=configs,
+            ckpt_path=ckpt_path,
+            tst_data=tst_data,
+            txt_vocab=txt_vocab,
+            gls_vocab=gls_vocab,
+        )
+        # Temperory save result
+        save_pickle('./sign_model/test_result.pickle', result)
+        print('[INFO] Test_loss: {}'.format(result['valid_generation_loss']))
+        print('[INFO] saved.')
+        sys.exit(-1)
+    else:
+        result = load_pickle('./sign_model/test_result.pickle')
 
-    trainer = TrainManager(
-        model=model,
-        config=configs,
-    )
+    # Check output directory
+    if not(os.path.exists(args.output)):
+        os.mkdir(args.output)
 
-    trainer.train_and_validation(
-        train_data=tr_data,
-        valid_data=dev_data,
-    )
-    del tr_data, dev_data
+    # Load learned PCA
+    estimator = load_pickle(args.learned_pca)
 
+    # Save rendered image
+    for scene_num, (skel_hyp, skel_ref) in enumerate(tqdm(zip(result['skel_hyp'], result['skel_ref']))):
+        # Get video information
+        vid_name = result['vid_name'][scene_num]   
+        txt = result['txt_ref'][scene_num]      
+        
+        # PCA inverse transform
+        landmarks_hyp = estimator.inverse_transform(skel_hyp)
+        landmarks_ref = estimator.inverse_transform(skel_ref)
+
+        n_samples, dim = landmarks_ref.shape
+
+        # Get x and y coordinates of predicted landmarks
+        x_cors_hyp = np.array([landmarks_hyp[:, i] for i in range(0, dim, 2)]).T
+        y_cors_hyp = np.array([landmarks_hyp[:, i+1] for i in range(0, dim, 2)]).T
+
+        x_cors_ref = np.array([landmarks_ref[:, i] for i in range(0, dim, 2)]).T
+        y_cors_ref = np.array([landmarks_ref[:, i+1] for i in range(0, dim, 2)]).T
+
+        # Create base image
+        base_width = args.img_size * n_samples
+        base_height = args.img_size * 2 + 100
+        base_img = Image.new(
+            'RGB', 
+            (base_width, base_height)
+        )
+        base_draw = ImageDraw.Draw(base_img)
+        base_draw.text(
+            xy=(base_width/2, base_height - 50), 
+            text=txt, 
+            fill='white', 
+            font=ImageFont.truetype("DejaVuSans.ttf", 40)
+        )
+
+        for i in range(n_samples):
+            # Get predicted face
+            image_hyp = draw_landmark(args, x_cors_hyp[i], y_cors_hyp[i])
+            # Paste the rendered image on the base image
+            base_img.paste(image_hyp, (i*args.img_size, 0))
+
+            # Get ground truth face
+            image_ref = draw_landmark(args, x_cors_ref[i], y_cors_ref[i])
+            # Paste the rendered image on the base image
+            base_img.paste(image_ref, (i*args.img_size, args.img_size))
+
+        # Save final output image
+        base_img.save('{}/{}.png'.format(args.output, vid_name))
+        
 
 def main():
     args = _get_parser()
+    
+    # Allocating to selected gpu
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
-    train(args=args)
+    test(args=args)
 
 if __name__ == '__main__':
     main()

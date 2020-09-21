@@ -38,6 +38,8 @@ class MultiHeadedAttention(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
 
+        self.attention = None
+
     def forward(self, k: Tensor, v: Tensor, q: Tensor, mask: Tensor = None):
         """
         Computes multi-headed attention.
@@ -74,6 +76,9 @@ class MultiHeadedAttention(nn.Module):
 
         # apply attention dropout and compute context vectors.
         attention = self.softmax(scores)
+        # Save attention to the object
+        self.attention = attention
+        # Attention dropout
         attention = self.dropout(attention)
 
         # get context vector (select values with attention) and reshape

@@ -4,3 +4,12 @@ sign_model/
 *.ipynb
 __pycache__/
 .vscode
+PHOENIX-2014-T/
+PHOENIX-2014-T_FACE/
+pca_result/
+external_lib/
+train_results/
+*.jpg
+*.png
+/external_metrics
+output/

@@ -110,6 +110,12 @@ def draw_circle(draw, x, y, fill, r):
     leftup = (x-r, y-r)
     rightup = (x+r, y+r)
     draw.ellipse([leftup, rightup], fill)
+
+def relocate_and_scaling(x_cor, y_cor, center_idx, size=256, scale=2):
+    new_x_cor = (x_cor - x_cor[center_idx]) * scale + size / 2
+    new_y_cor = (y_cor - y_cor[center_idx]) * scale + size / 2    
+
+    return new_x_cor, new_y_cor
     
 
 

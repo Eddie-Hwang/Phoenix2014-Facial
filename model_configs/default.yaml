@@ -1,20 +1,34 @@
 name: sign_experiment
-
+data:
+    data_path: ./PHOENIX-2014-T_FACE/
+    version: phoenix_2014_trans
+    sgn: sign
+    txt: text
+    gls: gloss
+    train: ./PHOENIX-2014-T_FACE/train.pickle
+    dev: ./PHOENIX-2014-T_FACE/dev.pickle
+    test: ./PHOENIX-2014-T_FACE/test.pickle
+    feature_size: 1024
+    level: word
+    txt_lowercase: true
+    max_sent_length: 40
+    random_train_subset: -1
+    random_dev_subset: -1
 training:
     reset_best_ckpt: false
     reset_scheduler: false
     reset_optimizer: false
     random_seed: 42
     model_dir: "./sign_model"
+    translation_loss_weight: 0.0
     generation_loss_weight: 1.0
-    translation_loss_weight: 1.0
     eval_metric: bleu
     optimizer: adam
-    learning_rate: 0.001
-    batch_size: 32
-    num_valid_log: 5
+    learning_rate: 0.0001
+    batch_size: 64
+    num_valid_log: 100
     epochs: 100
-    early_stopping_metric: eval_metric
+    early_stopping_metric: generation_loss
     batch_type: sentence
     translation_normalization: batch
     eval_recognition_beam_size: 1
@@ -37,6 +51,8 @@ training:
     patience: 8
     decrease_factor: 0.7
     label_smoothing: 0.0
+    clip_grad_norm: 5.0
+    use_custom_loss: true
 model:
     initializer: xavier
     bias_initializer: zeros
@@ -46,7 +62,7 @@ model:
     tied_softmax: false
     encoder:
         type: transformer
-        num_layers: 3
+        num_layers: 2
         num_heads: 8
         embeddings:
             embedding_dim: 512
@@ -60,8 +76,8 @@ model:
         freeze: false
     decoder:
         type: transformer
-        target_size: 210
-        num_layers: 3
+        target_size: 10
+        num_layers: 2
         num_heads: 8
         embeddings:
             embedding_dim: 512

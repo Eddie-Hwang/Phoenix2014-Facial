@@ -15,21 +15,23 @@ class Batch:
         self.batch = torch_batch
 
         # Data information
-        self.vid_names = self.batch.vid_name
+        self.vid_names = self.batch.id
         
         # Text
-        self.src_txt = self.batch.txt[0]
+        self.src_txt = self.batch.text[0]
         self.src_txt_mask = (self.src_txt != txt_pad_index).unsqueeze(1)
-        self.src_length = self.batch.txt[1]
+        self.src_length = self.batch.text[1]
+        # self.num_src_tokens = self.src_length.sum().detach().clone().numpy()
 
         # Target pose sequences
-        self.trg_seq = self.batch.target[0]
+        self.trg_seq = self.batch.landmark[0]
         self.trg_seq_mask = (self.trg_seq != trg_pad_token)[:, :, 0].unsqueeze(1)
-        self.trg_length = self.batch.target[1]
+        self.trg_length = self.batch.landmark[1]
 
         # Gloss
-        self.gloss = self.batch.gls[0]
-        self.gloss_length = self.batch.gls[1]
+        self.gloss = self.batch.gloss[0]
+        self.gloss_length = self.batch.gloss[1]
+        self.num_gloss_tokens = self.gloss_length.sum().detach().clone().numpy()
 
         self.use_cuda = use_cuda
 
