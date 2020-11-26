@@ -143,14 +143,16 @@ class TrainManager:
             generation_loss_weight=self.generation_loss_weight
         )
 
+        _generation_loss, _, _, _ = generation_loss
+
         # If we use encoder loss together, then backwards
         # both tranlation and generation loss
         if self.do_translation and self.do_generation:
-            total_loss = translation_loss + generation_loss
-        elif not(self.do_generation):
-            total_loss = translation_loss
+            total_loss = translation_loss + _generation_loss
+        # elif not(self.do_generation):
+        #     total_loss = translation_loss
         elif not(self.do_translation):
-            total_loss = generation_loss
+            total_loss = _generation_loss
         
         # Backward
         total_loss.backward()
@@ -229,6 +231,8 @@ class TrainManager:
                     update = (count == 0)
                     tr_translation_loss, tr_generation_loss = self._train_batch(batch, update)
 
+                    _tr_generation_loss, mse_loss, cont_loss, rotation_loss = tr_generation_loss
+
                     # Write loss on tensorboard
                     if self.do_translation:
                         self.tb_writer.add_scalar(
@@ -239,9 +243,24 @@ class TrainManager:
                     if self.do_generation:
                         self.tb_writer.add_scalar(
                             'generation_loss(Train)', 
-                            tr_generation_loss, 
+                            _tr_generation_loss, 
                             self.steps
                         )
+                        # self.tb_writer.add_scalar(
+                        #     'mse_loss(Train)', 
+                        #     mse_loss, 
+                        #     self.steps
+                        # )
+                        # self.tb_writer.add_scalar(
+                        #     'cont_loss(Train)', 
+                        #     cont_loss, 
+                        #     self.steps
+                        # )
+                        # self.tb_writer.add_scalar(
+                        #     'rotation_loss(Train)', 
+                        #     rotation_loss, 
+                        #     self.steps
+                        # )
 
                     count = self.batch_multiplier if update else count
                     count -= 1
@@ -260,7 +279,7 @@ class TrainManager:
                             )
                         if self.do_generation:
                             log_out += "Batch Generation Loss: {:10.6f} => ".format(
-                                tr_generation_loss
+                                _tr_generation_loss
                             )
                         log_out += "Lr: {:.6f}".format(self.optimizer.param_groups[0]["lr"])
                         self.logger.info(log_out)

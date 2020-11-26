@@ -31,6 +31,9 @@ import numpy as np
 #     return processed
 
 def landmark_preprocessing(landmarks):
+    '''
+    Clipping the first and second PC by 0.5
+    '''
     landmarks[:, 0] = 0.5
     landmarks[:, 1] = -0.5
     
@@ -80,7 +83,8 @@ def load_data(data_configs):
         use_vocab=False,
         init_token=None,
         dtype=torch.float32,
-        preprocessing=landmark_preprocessing,
+        # preprocessing=landmark_preprocessing,
+        preprocessing=None,
         batch_first=True,
         include_lengths=True,
         pad_token=torch.zeros((LANDMARK_SIZE,)),

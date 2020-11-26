@@ -1,109 +1,144 @@
-# fashion_pose.py : MPII를 사용한 신체부위 검출
-import cv2
+from dataset.data import load_data
+from model.model import build_model
+from train_manager import TrainManager
+from utils import *
+from opts import *
+from model.prediction import test_on_data
+from render import render_face, get_blank_img
+from tqdm import tqdm
+from PIL import Image, ImageDraw, ImageFont
 
-# MPII에서 각 파트 번호, 선으로 연결될 POSE_PAIRS
-BODY_PARTS = { "Head": 0, "Neck": 1, "RShoulder": 2, "RElbow": 3, "RWrist": 4,
-                "LShoulder": 5, "LElbow": 6, "LWrist": 7, "RHip": 8, "RKnee": 9,
-                "RAnkle": 10, "LHip": 11, "LKnee": 12, "LAnkle": 13, "Chest": 14,
-                "Background": 15 }
+import argparse
+import os, sys
+import numpy as np
+import glob
 
-POSE_PAIRS = [ ["Head", "Neck"], ["Neck", "RShoulder"], ["RShoulder", "RElbow"],
-                ["RElbow", "RWrist"], ["Neck", "LShoulder"], ["LShoulder", "LElbow"],
-                ["LElbow", "LWrist"], ["Neck", "Chest"], ["Chest", "RHip"], ["RHip", "RKnee"],
-                ["RKnee", "RAnkle"], ["Chest", "LHip"], ["LHip", "LKnee"], ["LKnee", "LAnkle"] ]
+def _get_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-config',
+        default='./model_configs/default.yaml',
+        type=str,
+        help='Traning configuration file (yaml).'
+    )
+    parser.add_argument('--gpu_id', type=str, default='0')
+    parser.add_argument('--ckpt_path', type=str, default='./sign_model/best.ckpt')
+    parser.add_argument('--output', type=str, default='./sign_model/output')
+    parser.add_argument('--img_size', type=int, default=64)
+    parser.add_argument('--learned_pca', default='./pca_result/learned_pca.pickle')
+    parser.add_argument('--test_path', default='./PHOENIX-2014-T_preprocessed/test')
     
-# 각 파일 path
-# protoFile = "D:\\python_D\\fashion_data\\pose_deploy_linevec_faster_4_stages.prototxt"
-# weightsFile = "D:\\python_D\\fashion_data\\pose_iter_160000.caffemodel"
+    args = parser.parse_args()
 
-protoFile = './external_lib/openpose/models/pose/mpi/pose_deploy_linevec_faster_4_stages.prototxt'
-weightsFile = './external_lib/openpose/models/pose/mpi/pose_iter_160000.caffemodel'
+    return args
 
-hand_proto = './external_lib/openpose/models/hand/pose_deploy.prototxt'
-hand_weights = './external_lib/openpose/models/hand/pose_iter_102000.caffemodel'
- 
-# 위의 path에 있는 network 불러오기
-net = cv2.dnn.readNetFromCaffe(protoFile, weightsFile)
-hand_net = cv2.dnn.readNetFromCaffe(hand_proto, hand_weights)
+def draw_landmark(args, x_cor, y_cor):
+    image, draw = get_blank_img(
+        clr='L', 
+        width=args.img_size, 
+        height=args.img_size
+    )
+    # Render facial expression
+    render_face(x_cor, y_cor, draw, width=1)
 
-# 이미지 읽어오기
-# image = cv2.imread("D:\\python_D\\fashion_data\\full_body7.png")
-image = cv2.imread('./PHOENIX-2014-T/features/fullFrame-227x227px/dev/01April_2010_Thursday_heute-6697/images0008.png')
-image = cv2.resize(image, dsize=(200,200), interpolation=cv2.INTER_LINEAR)
+    return image
 
-# frame.shape = 불러온 이미지에서 height, width, color 받아옴
-imageHeight, imageWidth, _ = image.shape
- 
-# network에 넣기위해 전처리
-inpBlob = cv2.dnn.blobFromImage(image, 1.0 / 255, (imageWidth, imageHeight), (0, 0, 0), swapRB=False, crop=False)
- 
-# network에 넣어주기
-net.setInput(inpBlob)
-hand_net.setInput(inpBlob)
-
-# 결과 받아오기
-output = net.forward()
-hand_output = net.forward()
-
-# output.shape[0] = 이미지 ID, [1] = 출력 맵의 높이, [2] = 너비
-H = output.shape[2]
-W = output.shape[3]
-print("이미지 ID : ", len(output[0]), ", H : ", output.shape[2], ", W : ",output.shape[3]) # 이미지 ID
-
-# 키포인트 검출시 이미지에 그려줌
-points = []
-for i in range(0,15):
-    # 해당 신체부위 신뢰도 얻음.
-    probMap = output[0, i, :, :]
- 
-    # global 최대값 찾기
-    minVal, prob, minLoc, point = cv2.minMaxLoc(probMap)
-
-    # 원래 이미지에 맞게 점 위치 변경
-    x = (imageWidth * point[0]) / W
-    y = (imageHeight * point[1]) / H
-
-    # 키포인트 검출한 결과가 0.1보다 크면(검출한곳이 위 BODY_PARTS랑 맞는 부위면) points에 추가, 검출했는데 부위가 없으면 None으로    
-    if prob > 0.1 :    
-        cv2.circle(image, (int(x), int(y)), 3, (0, 255, 255), thickness=-1, lineType=cv2.FILLED)       # circle(그릴곳, 원의 중심, 반지름, 색)
-        cv2.putText(image, "{}".format(i), (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, lineType=cv2.LINE_AA)
-        points.append((int(x), int(y)))
-    else :
-        points.append(None)
-
-# hand_points = []
-# for j in range(0, 21):
-#     probMap = hand_output[0, j, :, :]
-#     minVal, prob, minLoc, point = cv2.minMaxLoc(probMap)
-#     h_x = (imageWidth * point[0]) / W
-#     h_y = (imageHeight * point[1]) / H 
-
-#     if prob > 0.1:
-#         cv2.circle(image, (int(h_x), int(h_y)), 3, (0, 0, 255), thickness=-1, lineType=cv2.FILLED)
-#         cv2.putText(image, "{}".format(j), (int(h_x), int(h_y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, lineType=cv2.LINE_AA)
-#         hand_points.append((int(h_x), int(h_y)))
-#     else:
-#         hand_points.append(None)
-# cv2.imshow("Output-Keypoints",image)
-# cv2.waitKey(0)
-cv2.imwrite('./output_keypoints.png', image)
-
-# 이미지 복사
-imageCopy = image
-
-# 각 POSE_PAIRS별로 선 그어줌 (머리 - 목, 목 - 왼쪽어깨, ...)
-for pair in POSE_PAIRS:
-    partA = pair[0]             # Head
-    partA = BODY_PARTS[partA]   # 0
-    partB = pair[1]             # Neck
-    partB = BODY_PARTS[partB]   # 1
+def test(args):
+    configs = load_config(args.config)
+    ckpt_path = args.ckpt_path
+    # Load data and vocabulary
+    tr_data, dev_data, tst_data, txt_vocab, gls_vocab = load_data(configs['data'])
     
-    #print(partA," 와 ", partB, " 연결\n")
-    if points[partA] and points[partB]:
-        cv2.line(imageCopy, points[partA], points[partB], (0, 255, 0), 2)
+    if not(os.path.exists('./sign_model/test_result.pickle')):
+        # Test
+        result = test_on_data(
+            config=configs,
+            ckpt_path=ckpt_path,
+            tst_data=tst_data,
+            txt_vocab=txt_vocab,
+            gls_vocab=gls_vocab,
+        )
+        # Temperory save result
+        save_pickle('./sign_model/test_result.pickle', result)
+        print('[INFO] Test_loss: {}'.format(result['valid_generation_loss']))
+        print('[INFO] saved.')
+    else:
+        result = load_pickle('./sign_model/test_result.pickle')
 
+    # Check output directory
+    if not(os.path.exists(args.output)):
+        os.mkdir(args.output)
 
-# # cv2.imshow("Output-Keypoints",imageCopy)
-# # cv2.waitKey(0)
-# # cv2.destroyAllWindows()
-cv2.imwrite('./output_keypoints_copy.png', imageCopy)
+    # Load learned PCA
+    estimator = load_pickle(args.learned_pca)
+
+    # Save rendered image
+    for scene_num, (skel_hyp, skel_ref) in enumerate(tqdm(zip(result['skel_hyp'], result['skel_ref']))):
+        # Get video information
+        vid_name = result['vid_name'][scene_num]   
+        txt = result['txt_ref'][scene_num]      
+        
+        # PCA inverse transform
+        landmarks_hyp = estimator.inverse_transform(skel_hyp)
+        landmarks_ref = estimator.inverse_transform(skel_ref)
+
+        n_samples, dim = landmarks_ref.shape
+
+        # Get x and y coordinates of predicted landmarks
+        x_cors_hyp = np.array([landmarks_hyp[:, i] for i in range(0, dim, 2)]).T
+        y_cors_hyp = np.array([landmarks_hyp[:, i+1] for i in range(0, dim, 2)]).T + 5
+
+        x_cors_ref = np.array([landmarks_ref[:, i] for i in range(0, dim, 2)]).T
+        y_cors_ref = np.array([landmarks_ref[:, i+1] for i in range(0, dim, 2)]).T + 5
+
+        # Create base image
+        base_width = args.img_size * n_samples
+        base_height = args.img_size * 3 + 100
+        base_img = Image.new(
+            'RGB', 
+            (base_width, base_height)
+        )
+        base_draw = ImageDraw.Draw(base_img)
+        base_draw.text(
+            xy=(base_width/2, base_height - 50), 
+            text=txt, 
+            fill='white', 
+            font=ImageFont.truetype("DejaVuSans.ttf", 40)
+        )
+
+        # Get gt face image path
+        gts = sorted(glob.glob(
+            os.path.join(args.test_path, '{}/face_*.png'.format(vid_name))
+        ))
+
+        assert len(gts) == n_samples
+
+        for i in range(n_samples):
+            # Get predicted face
+            image_hyp = draw_landmark(args, x_cors_hyp[i], y_cors_hyp[i])
+            # Paste the rendered image on the base image
+            base_img.paste(image_hyp, (i*args.img_size, 0))
+
+            # Get ground truth landmarks
+            image_ref = draw_landmark(args, x_cors_ref[i], y_cors_ref[i])
+            # Paste the rendered image on the base image
+            base_img.paste(image_ref, (i*args.img_size, args.img_size * 1))
+
+            # Get ground truth face
+            gt_face = Image.open(gts[i])
+            base_img.paste(gt_face, (i*args.img_size, args.img_size * 2))
+
+        # Save final output image
+        base_img.save('{}/{}.png'.format(args.output, vid_name))
+        
+
+def main():
+    args = _get_parser()
+    
+    # Allocating to selected gpu
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
+    test(args=args)
+
+if __name__ == '__main__':
+    main()
+

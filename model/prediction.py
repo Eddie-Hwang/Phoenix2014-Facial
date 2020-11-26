@@ -63,10 +63,11 @@ def validate_on_data(
                             generation_loss_function=generation_loss_function,
                             generation_loss_weight=generation_loss_weight,
                 )
+                total_loss, mse, cont, rotation = batch_generation_loss
                 if do_translation:
                     total_translation_loss += batch_translation_loss
                 if do_generation:
-                    total_generation_loss += batch_generation_loss
+                    total_generation_loss += total_loss
 
                 if inference:
                     trg_input = torch.empty_like(batch.trg_seq)

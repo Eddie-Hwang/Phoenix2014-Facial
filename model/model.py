@@ -209,10 +209,14 @@ class SignGenModel(nn.Module):
             # decoder output
             skeleton_output, _, _, _ = dec_out # B x S x dim
             # Caculate generation loss
+            # generation_loss = generation_loss_function(
+            #     pred=skeleton_output,
+            #     target=trg_input,
+            # ) * generation_loss_weight
             generation_loss = generation_loss_function(
                 pred=skeleton_output,
                 target=trg_input,
-            ) * generation_loss_weight
+            )
         else:
             generation_loss = None
 

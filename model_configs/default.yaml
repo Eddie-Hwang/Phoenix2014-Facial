@@ -5,9 +5,9 @@ data:
     sgn: sign
     txt: text
     gls: gloss
-    train: ./PHOENIX-2014-T_FACE/train.pickle
-    dev: ./PHOENIX-2014-T_FACE/dev.pickle
-    test: ./PHOENIX-2014-T_FACE/test.pickle
+    train: ./PHOENIX-2014-T_preprocessed/train.pickle
+    dev: ./PHOENIX-2014-T_preprocessed/dev.pickle
+    test: ./PHOENIX-2014-T_preprocessed/test.pickle
     feature_size: 1024
     level: word
     txt_lowercase: true
@@ -25,7 +25,7 @@ training:
     eval_metric: bleu
     optimizer: adam
     learning_rate: 0.0001
-    batch_size: 64
+    batch_size: 32
     num_valid_log: 100
     epochs: 100
     early_stopping_metric: generation_loss
@@ -52,7 +52,7 @@ training:
     decrease_factor: 0.7
     label_smoothing: 0.0
     clip_grad_norm: 5.0
-    use_custom_loss: true
+    use_custom_loss: false
 model:
     initializer: xavier
     bias_initializer: zeros
@@ -76,7 +76,7 @@ model:
         freeze: false
     decoder:
         type: transformer
-        target_size: 10
+        target_size: 60
         num_layers: 2
         num_heads: 8
         embeddings:
